@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/barcode-detector@3.2.2/dist/iife/polyfill.js"></script>
 <style>
 :root{
   --paper:#EEF1F4; --card:#FFFFFF; --ink:#16223A; --muted:#5B6780; --line:#D3D9E2;
@@ -44,15 +44,17 @@ button{cursor:pointer}
 .sticker strong{font-size:1.35rem;font-stretch:70%;font-weight:800}
 
 .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:14px}
-#reader{width:100%;border-radius:10px;overflow:hidden;background:#000;min-height:0}
-#reader video{display:block;width:100%!important;height:auto}
-#reader:empty{display:none}
+#reader{position:relative;width:100%;border-radius:10px;overflow:hidden;background:#000;aspect-ratio:4/3}
+#reader video{display:block;width:100%;height:100%;object-fit:cover}
+#reader .guide{position:absolute;left:10%;right:10%;top:32%;bottom:32%;border:3px solid rgba(255,255,255,.9);border-radius:8px;box-shadow:0 0 0 999px rgba(0,0,0,.28);transition:border-color .15s}
+#reader.hit .guide{border-color:var(--sticker)}
+#torchBtn{position:absolute;right:10px;bottom:10px;border:0;border-radius:999px;padding:8px 14px;background:rgba(0,0,0,.6);color:#fff;font-weight:700;font-size:.9rem}
+#torchBtn[aria-pressed="true"]{background:var(--sticker);color:var(--sticker-ink)}
 .btn{border:0;border-radius:10px;padding:14px 16px;font-weight:700;font-size:1.05rem;width:100%}
 .btn.primary{background:var(--ink);color:var(--paper)}
 .btn.quiet{background:none;border:1px solid var(--line);font-weight:600;font-size:.95rem;padding:10px 14px;width:auto}
 .btn[disabled]{opacity:.55;cursor:default}
 .scan-row{display:flex;flex-direction:column;gap:10px;margin-top:12px}
-#reader:empty + .scan-row{margin-top:0}
 .manual{display:flex;gap:8px}
 .manual input{flex:1;min-width:0;border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:10px 12px}
 .msg{margin:10px 0 0;color:var(--muted);font-size:.9rem;min-height:1.3em}
@@ -122,8 +124,12 @@ dialog p{margin:0 0 14px;color:var(--muted);font-size:.9rem}
 
 <main>
   <section class="panel">
-    <div id="reader"></div>
-    <div class="scan-row">
+    <div id="reader" hidden>
+      <video id="video" playsinline muted autoplay></video>
+      <div class="guide"></div>
+      <button id="torchBtn" type="button" aria-pressed="false" hidden>Light</button>
+    </div>
+    <div class="scan-row" id="scanRow">
       <button id="camBtn" class="btn primary">Start scanning</button>
       <form id="manualForm" class="manual">
         <input id="manualIsbn" inputmode="numeric" autocomplete="off" placeholder="Or type the ISBN" aria-label="ISBN">
@@ -326,48 +332,95 @@ async function handleIsbn(isbn){
 }
 
 /* ---------- scanner ---------- */
-let scanner = null, lastCode = '', lastAt = 0, lastWarn = 0;
+let detector = null, stream = null, track = null, paused = false, busy = false;
+let lastCode = '', lastAt = 0, lastWarn = 0, torchOn = false;
 function msg(t){ $('msg').textContent = t; }
 function setCam(state){
   const b = $('camBtn');
-  if (state === 'scanning'){ b.textContent = 'Scanning… point at the barcode'; b.disabled = true; }
+  if (state === 'loading'){ b.textContent = 'Starting camera…'; b.disabled = true; }
+  else if (state === 'scanning'){ b.textContent = 'Scanning… hold the barcode in the box'; b.disabled = true; }
   else if (state === 'paused'){ b.textContent = 'Scan next book'; b.disabled = false; }
   else { b.textContent = 'Start scanning'; b.disabled = false; }
 }
+function getDetector(){
+  if (detector) return detector;
+  if (!('BarcodeDetector' in window)) return null;
+  detector = new BarcodeDetector({ formats:['ean_13'] });
+  return detector;
+}
 async function startScan(){
   msg('');
-  if (!window.Html5Qrcode){ msg('The scanner didn’t load. Check your internet connection, or type the ISBN instead.'); return; }
-  if (!scanner){
-    scanner = new Html5Qrcode('reader', {
-      formatsToSupport:[ Html5QrcodeSupportedFormats.EAN_13 ],
-      experimentalFeatures:{ useBarCodeDetectorIfSupported:true }, verbose:false
-    });
+  if (stream && paused){ // camera already running, just carry on
+    paused = false; setCam('scanning');
+    $('reader').scrollIntoView({ behavior:'smooth', block:'center' });
+    return;
   }
-  const st = scanner.getState();
-  if (st === Html5QrcodeScannerState.PAUSED){ scanner.resume(); setCam('scanning'); window.scrollTo({top:0,behavior:'smooth'}); return; }
-  if (st === Html5QrcodeScannerState.SCANNING) return;
+  if (stream) return;
+  if (!getDetector()){ msg('The scanner didn’t load. Check your internet connection and reload, or type the ISBN instead.'); return; }
+  setCam('loading');
   try{
-    await scanner.start({ facingMode:'environment' },
-      { fps:12, qrbox:(w,h) => ({ width:Math.max(120,Math.floor(Math.min(w*.85,340))), height:Math.max(60,Math.floor(Math.min(h*.4,140))) }) },
-      onCode, () => {});
-    setCam('scanning');
+    stream = await navigator.mediaDevices.getUserMedia({ audio:false, video:{
+      facingMode:{ ideal:'environment' }, width:{ ideal:1920 }, height:{ ideal:1080 } } });
   }catch(e){
+    setCam('idle');
     msg('Camera access is blocked. Allow the camera for this site in your browser settings, or type the ISBN instead.');
+    return;
   }
+  track = stream.getVideoTracks()[0];
+  try{ await track.applyConstraints({ advanced:[{ focusMode:'continuous' }] }); }catch(e){}
+  const caps = track.getCapabilities ? track.getCapabilities() : {};
+  $('torchBtn').hidden = !caps.torch;
+  const v = $('video'); v.srcObject = stream;
+  $('reader').hidden = false; $('scanRow').style.marginTop = '12px';
+  try{ await v.play(); }catch(e){}
+  paused = false; setCam('scanning');
+  loop();
+}
+function stopScan(){
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null; track = null; torchOn = false; paused = false;
+  $('reader').hidden = true; $('scanRow').style.marginTop = ''; setCam('idle');
+}
+async function loop(){
+  if (!stream) return;
+  const v = $('video');
+  if (!paused && !busy && v.readyState >= 2){
+    busy = true;
+    try{
+      const codes = await detector.detect(v);
+      for (const c of codes){ if (onCode(c.rawValue)) break; }
+    }catch(e){}
+    busy = false;
+  }
+  setTimeout(loop, 60);
 }
 function onCode(text){
   const isbn = toIsbn13(text);
   if (!isbn){
     if (Date.now() - lastWarn > 2500){ lastWarn = Date.now(); msg('That isn’t a book ISBN. Use the barcode starting 978 or 979.'); }
-    return;
+    return false;
   }
-  if (isbn === lastCode && Date.now() - lastAt < 4000) return;
+  if (isbn === lastCode && Date.now() - lastAt < 4000) return false;
   lastCode = isbn; lastAt = Date.now();
-  try{ scanner.pause(true); }catch(e){}
-  setCam('paused'); msg('');
+  paused = true; setCam('paused'); msg('');
+  $('reader').classList.add('hit'); setTimeout(() => $('reader').classList.remove('hit'), 500);
   if (navigator.vibrate) navigator.vibrate(60);
   handleIsbn(isbn);
+  return true;
 }
+$('torchBtn').onclick = async () => {
+  if (!track) return;
+  torchOn = !torchOn;
+  try{ await track.applyConstraints({ advanced:[{ torch:torchOn }] }); }catch(e){ torchOn = false; }
+  $('torchBtn').setAttribute('aria-pressed', String(torchOn));
+};
+document.addEventListener('visibilitychange', () => { if (document.hidden) stopScan(); });
+// load the barcode reader in the background so the first scan is instant
+window.addEventListener('load', () => {
+  const d = getDetector(); if (!d) return;
+  const c = document.createElement('canvas'); c.width = c.height = 8;
+  d.detect(c).catch(() => {});
+});
 
 /* ---------- events ---------- */
 $('camBtn').onclick = startScan;
