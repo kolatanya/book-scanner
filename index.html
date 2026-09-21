@@ -94,14 +94,19 @@ button{cursor:pointer}
 .deal-note:focus-visible{outline:3px solid var(--sticker)}
 .list-head div{display:flex;gap:8px}
 #history{list-style:none;margin:10px 0 0;padding:0}
-#history li{border-bottom:1px solid var(--line)}
-#history button{all:unset;box-sizing:border-box;display:flex;justify-content:space-between;gap:12px;width:100%;padding:12px 2px;cursor:pointer}
-#history button:focus-visible{outline:3px solid var(--sticker)}
+#history li{display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);background:var(--paper);touch-action:pan-y;transition:transform .18s,opacity .18s}
+#history .row{all:unset;box-sizing:border-box;flex:1;min-width:0;display:flex;justify-content:space-between;gap:12px;padding:12px 2px;cursor:pointer}
+#history .row:focus-visible,#history .tick:focus-visible{outline:3px solid var(--sticker)}
+#history .tick{all:unset;box-sizing:border-box;flex:none;width:30px;height:30px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;cursor:pointer;font-weight:800;font-size:.9rem;color:transparent}
+#history .tick[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+#history li.deal .tick{border-color:rgba(255,255,255,.7)}
+#history li.deal .tick[aria-pressed="true"]{background:#fff;border-color:#fff;color:var(--buy)}
 #history .t{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #history .s{font-size:.85rem;color:var(--muted)}
 #history .v{font-weight:800;font-stretch:70%;font-size:1.1rem;flex:none}
 #history li.deal{background:var(--buy);border-radius:10px;border-bottom:0;margin-bottom:6px}
-#history li.deal button{padding:12px}
+#history li.deal{padding-left:10px}
+#history li.deal .row{padding:12px 10px 12px 0}
 #history li.deal .t,#history li.deal .s,#history li.deal .v{color:#fff}
 #history .v.buy{color:var(--buy)} #history .v.maybe{color:var(--maybe)} #history .v.skip{color:var(--skip)}
 .empty{color:var(--muted);font-size:.92rem;padding:10px 0}
@@ -117,6 +122,19 @@ dialog p{margin:0 0 14px;color:var(--muted);font-size:.9rem}
 .dialog-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:6px}
 .dialog-actions .btn{width:auto}
 [hidden]{display:none!important}
+.deal-flash{position:absolute;inset:0;background:var(--buy);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;padding:16px;animation:flashout 1.8s forwards}
+.deal-flash strong{font-size:2.6rem;font-stretch:65%;font-weight:800;line-height:1}
+.deal-flash span{font-weight:700}
+@keyframes flashout{0%,65%{opacity:1}100%{opacity:0}}
+.speed{margin:10px 0 0;font-weight:700;font-size:.92rem}
+.speed.slow{color:var(--muted)}
+.card-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.card-actions .btn{width:100%}
+#boughtBtn[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.trip{margin-top:12px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-weight:700}
+.list-hint{margin:6px 0 0;font-size:.82rem;color:var(--muted)}
+.toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--paper);border-radius:12px;padding:10px 12px 10px 16px;display:flex;align-items:center;gap:14px;box-shadow:0 6px 20px rgba(0,0,0,.25);z-index:10;max-width:calc(100% - 32px)}
+.toast button{all:unset;cursor:pointer;font-weight:800;color:var(--sticker);padding:4px 6px}
 .banner{margin-top:14px;border:2px dashed var(--buy);border-radius:14px;padding:12px 14px;font-size:.92rem}
 .banner button{all:unset;cursor:pointer;font-weight:700;text-decoration:underline;text-underline-offset:2px}
 .msg.ok{color:var(--ink);font-weight:600}
@@ -142,6 +160,7 @@ dialog p{margin:0 0 14px;color:var(--muted);font-size:.9rem}
       <video id="video" playsinline muted autoplay></video>
       <div class="guide"></div>
       <button id="torchBtn" type="button" aria-pressed="false" hidden>Light</button>
+      <div id="dealFlash" class="deal-flash" hidden><strong>Good deal</strong><span id="dealFlashText"></span></div>
     </div>
     <div class="scan-row" id="scanRow">
       <button id="camBtn" class="btn primary">Start scanning</button>
@@ -175,10 +194,15 @@ dialog p{margin:0 0 14px;color:var(--muted);font-size:.9rem}
       <span class="word" id="verdictWord">…</span>
       <span class="profit" id="profit">Enter the eBay price</span>
     </div>
+    <p id="speed" class="speed"></p>
     <p id="breakdown" class="note"></p>
     <div class="links">
       <a id="soldLink" class="main" target="_blank" rel="noopener">Check sold prices</a>
       <a id="liveLink" target="_blank" rel="noopener">See live listings</a>
+    </div>
+    <div class="card-actions">
+      <button id="boughtBtn" class="btn quiet" type="button" aria-pressed="false">Mark as bought</button>
+      <button id="removeBtn" class="btn quiet" type="button">Remove</button>
     </div>
   </section>
 
@@ -192,8 +216,11 @@ dialog p{margin:0 0 14px;color:var(--muted);font-size:.9rem}
       <button id="clearBtn" class="btn quiet">Clear</button>
     </div>
   </div>
+  <p class="list-hint">Tick the books you buy. Swipe a book left to remove it.</p>
+  <div id="trip" class="trip" hidden></div>
   <ul id="history"></ul>
 </main>
+<div id="toast" class="toast" role="status" hidden><span id="toastText"></span><button id="toastUndo" type="button">Undo</button></div>
 
 <dialog id="batchDlg">
   <form method="dialog">
@@ -218,6 +245,7 @@ dialog p{margin:0 0 14px;color:var(--muted);font-size:.9rem}
     <label class="field">eBay fee per order (£)<input id="sFeeFixed" inputmode="decimal"></label>
     <label class="field">Your postage cost per book (£)<input id="sPostage" inputmode="decimal"></label>
     <label class="field">Profit that makes a book a good deal (£)<input id="sMin" inputmode="decimal"></label>
+    <label class="field">Sales needed in 90 days for a good deal<input id="sMinSales" inputmode="numeric"></label>
     <label class="field">Price server (fills in eBay sold prices automatically)<input id="sServer" inputmode="url" placeholder="https://book-scout.yourname.workers.dev"></label>
     <div class="dialog-actions">
       <button class="btn quiet" value="cancel">Cancel</button>
@@ -228,17 +256,19 @@ dialog p{margin:0 0 14px;color:var(--muted);font-size:.9rem}
 
 <script>
 const $ = id => document.getElementById(id);
-const DEFAULTS = { batch:1, feePct:12.8, feeFixed:0.30, postage:3.00, minProfit:3, server:'' };
+const DEFAULTS = { batch:1, feePct:12.8, feeFixed:0.30, postage:3.00, minProfit:3, minSales:3, server:'' };
 function load(k,d){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):d; }catch(e){ return d; } }
 function save(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
 let S = Object.assign({}, DEFAULTS, load('bs_settings', {}));
 let H = load('bs_history', []);
-let CACHE = load('bs_cache', {});   // eBay results per ISBN, kept for 3 days
+try{ localStorage.removeItem('bs_cache'); }catch(e){}
+let CACHE = load('bs_cache2', {});   // eBay results per ISBN, kept for 3 days
 let current = null;
 
 const gbp = n => (n < 0 ? '−£' : '£') + Math.abs(n).toFixed(2);
 const num = v => { const n = parseFloat(String(v ?? '').replace(/[£,\s]/g,'')); return isFinite(n) ? n : null; };
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const findEntry = id => H.find(x => String(x.id) === String(id));
 
 /* ---------- ISBN ---------- */
 function check13(d){ let s=0; for(let i=0;i<12;i++) s += +d[i]*(i%2?3:1); return String((10 - s%10) % 10); }
@@ -267,24 +297,34 @@ async function lookupEbay(isbn){
   if (!S.server) return null;
   const hit = CACHE[isbn];
   if (hit && Date.now() - hit.at < 3*864e5) return hit.data;
+  let r;
+  try{ r = await fetch(S.server.replace(/\/+$/,'') + '/?isbn=' + isbn); }
+  catch(e){ return { error:true, network:true }; }   // no signal
   try{
-    const r = await fetch(S.server.replace(/\/+$/,'') + '/?isbn=' + isbn);
     const j = await r.json();
     if (!r.ok) return { error:true, detail:j.error };
     CACHE[isbn] = { at:Date.now(), data:j };
     const keys = Object.keys(CACHE); if (keys.length > 500) delete CACHE[keys[0]];
-    save('bs_cache', CACHE);
+    save('bs_cache2', CACHE);
     return j;
   }catch(e){ return { error:true }; }
 }
 
 /* ---------- maths ---------- */
+function speedOf(e){
+  if (e.sales == null) return null;
+  if (e.sales >= 10 || e.more) return 'fast';
+  if (e.sales >= S.minSales) return 'steady';
+  return 'slow';
+}
+const SPEED = { fast:'Sells fast', steady:'Sells steadily', slow:'Sells slowly' };
 function calc(e){
   if (e.ebay == null || e.shop == null) return null;
   const fees = e.ebay * S.feePct/100 + S.feeFixed;
   const profit = e.ebay - fees - S.postage - e.shop;
-  const verdict = profit >= S.minProfit ? 'buy' : profit > 0 ? 'maybe' : 'skip';
-  return { fees, profit, verdict };
+  const slow = e.sales != null && e.sales < S.minSales;
+  const verdict = profit >= S.minProfit && !slow ? 'buy' : profit > 0 ? 'maybe' : 'skip';
+  return { fees, profit, verdict, slow };
 }
 const WORD = { buy:'Buy', maybe:'Maybe', skip:'Skip' };
 
@@ -304,41 +344,74 @@ function renderResult(){
   $('priceSource').textContent = e.pending ? 'Checking eBay sold prices…' : (e.source || '');
   $('soldLink').href = `https://www.ebay.co.uk/sch/i.html?_nkw=${e.isbn}&LH_Sold=1&LH_Complete=1`;
   $('liveLink').href = `https://www.ebay.co.uk/sch/i.html?_nkw=${e.isbn}`;
+  $('boughtBtn').setAttribute('aria-pressed', String(!!e.bought));
+  $('boughtBtn').textContent = e.bought ? 'Bought ✓' : 'Mark as bought';
   renderVerdict();
 }
 function renderVerdict(){
   if (!current) return;
-  const c = calc(current), v = $('verdict');
+  const e = current, c = calc(e), v = $('verdict'), sp = speedOf(e);
+  $('speed').className = 'speed' + (sp === 'slow' ? ' slow' : '');
+  $('speed').textContent = sp ? `${SPEED[sp]}: ${e.sales}${e.more ? '+' : ''} sold in the last 90 days` : '';
   v.className = 'verdict' + (c ? ' ' + c.verdict : '');
   if (!c){
     $('verdictWord').textContent = '…';
-    $('profit').textContent = current.pending ? 'Checking eBay' : 'No eBay price';
+    $('profit').textContent = e.pending ? 'Checking eBay' : e.queued ? 'Waiting for signal' : 'No eBay price';
     $('breakdown').textContent = '';
     return;
   }
   $('verdictWord').textContent = WORD[c.verdict];
   $('profit').textContent = gbp(c.profit) + ' profit';
-  $('breakdown').textContent = `${gbp(current.ebay)} sale − ${gbp(c.fees)} eBay fees − ${gbp(S.postage)} postage − ${gbp(current.shop)} shop price`;
+  $('breakdown').textContent = `${gbp(e.ebay)} sale − ${gbp(c.fees)} eBay fees − ${gbp(S.postage)} postage − ${gbp(e.shop)} shop price`
+    + (c.slow && c.profit >= S.minProfit ? `. Profitable, but under ${S.minSales} sales in 90 days, so not flagged as a deal.` : '');
 }
 function rowSub(e){
   if (e.pending) return `Shop ${gbp(e.shop)}, checking eBay…`;
+  if (e.queued) return `Shop ${gbp(e.shop)}, waiting for signal`;
   if (e.ebay == null) return `Shop ${gbp(e.shop)}, no eBay sales found`;
-  const n = e.sales != null ? `, ${e.sales}${e.more ? '+' : ''} sold` : '';
+  const sp = speedOf(e);
+  const n = e.sales != null ? `, ${e.sales}${e.more ? '+' : ''} sold (${SPEED[sp].toLowerCase()})` : '';
   return `Shop ${gbp(e.shop)}, eBay ${gbp(e.ebay)}${n}`;
 }
+function renderTrip(){
+  const bought = H.filter(e => e.bought);
+  if (!bought.length){ $('trip').hidden = true; return; }
+  const spent = bought.reduce((t,e) => t + (e.shop || 0), 0);
+  const profit = bought.reduce((t,e) => { const c = calc(e); return t + (c ? c.profit : 0); }, 0);
+  $('trip').hidden = false;
+  $('trip').textContent = `Bought ${bought.length} book${bought.length === 1 ? '' : 's'}, ${gbp(spent)} spent, about ${gbp(profit)} profit`;
+}
 function renderHistory(){
-  $('dealNote').textContent = `Good deals (${gbp(S.minProfit)}+ profit) show in red at the top. Change`;
+  $('dealNote').textContent = `Good deals (${gbp(S.minProfit)}+ profit, ${S.minSales}+ sales) show in red at the top. Change`;
+  renderTrip();
   const ul = $('history');
   if (!H.length){ ul.innerHTML = '<li class="empty">Books you scan will appear here.</li>'; return; }
   const withCalc = H.map(e => ({ e, c:calc(e) }));
   const deals = withCalc.filter(x => x.c && x.c.verdict === 'buy').sort((a,b) => b.c.profit - a.c.profit);
   const rest = withCalc.filter(x => !(x.c && x.c.verdict === 'buy'));
   ul.innerHTML = deals.concat(rest).map(({ e, c }) =>
-    `<li class="${c && c.verdict === 'buy' ? 'deal' : ''}"><button data-id="${e.id}"><span style="min-width:0"><div class="t">${esc(e.title || e.isbn)}</div><div class="s">${rowSub(e)}</div></span>`
-    + (c ? `<span class="v ${c.verdict}">${gbp(c.profit)}</span>` : `<span class="v wait">${e.pending ? '…' : '–'}</span>`) + `</button></li>`
+    `<li data-id="${e.id}" class="${c && c.verdict === 'buy' ? 'deal' : ''}">`
+    + `<button class="tick" type="button" aria-pressed="${!!e.bought}" aria-label="Bought">✓</button>`
+    + `<button class="row" type="button"><span style="min-width:0"><div class="t">${esc(e.title || e.isbn)}</div><div class="s">${rowSub(e)}</div></span>`
+    + (c ? `<span class="v ${c.verdict}">${gbp(c.profit)}</span>` : `<span class="v wait">${e.pending || e.queued ? '…' : '–'}</span>`)
+    + `</button></li>`
   ).join('');
 }
-function persist(){ if (H.length > 300) H.length = 300; save('bs_history', H); renderHistory(); }
+function persist(){
+  if (H.length > 300) H.length = 300;
+  save('bs_history', H.map(({ busy, ...rest }) => rest));
+  renderHistory();
+}
+function refreshIfCurrent(e){ if (current && current.id === e.id) renderResult(); }
+
+/* ---------- toast with undo ---------- */
+let toastTimer = 0, toastUndo = null;
+function showToast(text, onUndo){
+  $('toastText').textContent = text; toastUndo = onUndo;
+  $('toastUndo').hidden = !onUndo; $('toast').hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('toast').hidden = true; toastUndo = null; }, 5000);
+}
+$('toastUndo').onclick = () => { if (toastUndo) toastUndo(); $('toast').hidden = true; toastUndo = null; };
 
 /* ---------- sounds ---------- */
 let audio = null;
@@ -355,34 +428,85 @@ function beep(freqs){
   }catch(e){}
 }
 
-/* ---------- a scan ---------- */
-async function handleIsbn(isbn, fromScanner){
-  const id = Date.now() + Math.random();
-  const entry = { id, isbn, title:'', author:'', cover:'', shop:S.batch, ebay:null, source:'', pending:true };
-  H.unshift(entry); current = entry; persist(); renderResult();
-  if (!fromScanner) $('result').scrollIntoView({ behavior:'smooth', block:'start' });
+/* ---------- deal alert ---------- */
+let flashTimer2 = 0;
+function dealAlert(e, c){
+  beep([880, 1320, 1760]);
+  if (navigator.vibrate) navigator.vibrate([80,60,80,60,200]);
+  flash(`Good deal: ${e.title || e.isbn} (${gbp(c.profit)} profit)`);
+  if (!stream) return;
+  const f = $('dealFlash');
+  $('dealFlashText').textContent = `${e.title || e.isbn}: ${gbp(c.profit)} profit`;
+  f.hidden = true; void f.offsetWidth; f.hidden = false;   // restart the animation
+  clearTimeout(flashTimer2); flashTimer2 = setTimeout(() => { f.hidden = true; }, 1800);
+}
 
-  const [book, eb] = await Promise.all([ lookupBook(isbn), lookupEbay(isbn) ]);
-  const e = H.find(x => x.id === id); if (!e) return;
-  e.pending = false;
-  e.title = book?.title || eb?.title || ''; e.author = book?.author || ''; e.cover = book?.cover || eb?.image || '';
-  if (eb && !eb.error && eb.count > 0){
+/* ---------- a scan ---------- */
+function handleIsbn(isbn, fromScanner){
+  const entry = { id: Date.now() + '' + Math.floor(Math.random()*1000), isbn, title:'', author:'', cover:'', shop:S.batch, ebay:null, source:'', pending:false, queued:false, bought:false };
+  H.unshift(entry); current = entry;
+  if (!fromScanner) $('result').scrollIntoView({ behavior:'smooth', block:'start' });
+  if (!navigator.onLine){
+    entry.queued = true;
+    entry.source = 'No signal. This book will be checked automatically when you’re back online.';
+    persist(); renderResult(); return;
+  }
+  lookupEntry(entry);
+}
+async function lookupEntry(e){
+  if (e.busy) return;
+  e.busy = true; e.pending = true; e.queued = false;
+  persist(); refreshIfCurrent(e);
+  const [book, eb] = await Promise.all([ e.title ? null : lookupBook(e.isbn), lookupEbay(e.isbn) ]);
+  e.busy = false; e.pending = false;
+  if (!H.includes(e)) return;   // removed while we were looking
+  if (book){ e.title = book.title || e.title; e.author = book.author || ''; e.cover = book.cover || ''; }
+  if (!e.title && eb && eb.title) e.title = eb.title;
+  if (!e.cover && eb && eb.image) e.cover = eb.image;
+
+  if (eb && eb.network){
+    e.queued = true;
+    e.source = 'No signal. This book will be checked automatically when you’re back online.';
+  } else if (eb && !eb.error && eb.count > 0){
     if (e.ebay == null) e.ebay = eb.median;
-    e.sales = eb.source === 'sold' ? eb.count : null; e.more = !!eb.more;
-    e.source = eb.source === 'sold'
-      ? `Middle sold price of ${eb.count}${eb.more ? '+' : ''} eBay UK sales in the last 90 days, including postage (range ${gbp(eb.lowest)} to ${gbp(eb.highest)}).`
-      : `Middle price of ${eb.count} live eBay listings, including postage. These are asking prices, not sold prices.`;
+    if (eb.source === 'sold'){
+      e.sales = eb.sold ?? eb.count; e.more = !!eb.more;
+      e.source = eb.usedOnly
+        ? `Middle price of ${eb.count} used copies sold on eBay UK in the last 90 days, including postage (range ${gbp(eb.lowest)} to ${gbp(eb.highest)}).`
+        : `Middle price of ${eb.count} eBay UK sales in the last 90 days, including postage. Too few used copies sold, so new ones are included (range ${gbp(eb.lowest)} to ${gbp(eb.highest)}).`;
+    } else {
+      e.sales = null;
+      e.source = `Middle price of ${eb.count} live eBay listings, including postage. These are asking prices, not sold prices.`;
+    }
   } else if (eb && !eb.error){
+    e.sales = 0;
     e.source = 'No eBay UK sales found for this ISBN in the last 90 days.';
   } else if (eb && eb.error){
     e.source = 'Couldn’t reach your price server' + (eb.detail ? ` (${eb.detail})` : '') + '. Type a price in or check sold prices.';
   } else {
     e.source = 'Automatic prices are off. Add your price server in settings, or type a price in.';
   }
-  persist();
-  if (current && current.id === id) renderResult();
+  persist(); refreshIfCurrent(e);
   const c = calc(e);
-  if (c && c.verdict === 'buy'){ beep([880, 1320, 1760]); if (navigator.vibrate) navigator.vibrate([80,60,80,60,200]); flash(`Good deal: ${e.title || isbn} (${gbp(c.profit)} profit)`); }
+  if (c && c.verdict === 'buy') dealAlert(e, c);
+}
+
+/* ---------- no-signal queue ---------- */
+function retryQueued(){
+  if (!navigator.onLine) return;
+  H.filter(e => e.queued && !e.busy).slice(0, 5).forEach(lookupEntry);
+}
+window.addEventListener('online', () => { flash('Back online. Checking saved books…'); retryQueued(); });
+setInterval(retryQueued, 15000);
+
+/* ---------- remove ---------- */
+function removeEntry(id){
+  const i = H.findIndex(x => String(x.id) === String(id)); if (i < 0) return;
+  const [e] = H.splice(i, 1);
+  seen.delete(e.isbn);
+  if (current === e){ current = null; $('result').hidden = true; }
+  persist();
+  showToast(`Removed ${e.title || e.isbn}`, () => { H.splice(Math.min(i, H.length), 0, e); persist(); });
 }
 
 /* ---------- scanner (continuous, rapid fire) ---------- */
@@ -431,6 +555,7 @@ async function toggleScan(){
 function stopScan(){
   if (stream) stream.getTracks().forEach(t => t.stop());
   stream = null; track = null; torchOn = false;
+  $('dealFlash').hidden = true;
   $('reader').hidden = true; $('scanRow').style.marginTop = ''; setCam('idle');
 }
 async function loop(){
@@ -461,7 +586,7 @@ function onCode(text){
   coolUntil = Date.now() + 900; // short gap so you can swap books
   $('reader').classList.add('hit'); setTimeout(() => $('reader').classList.remove('hit'), 400);
   beep([1200]); if (navigator.vibrate) navigator.vibrate(40);
-  flash('Scanned. Next book.');
+  flash(navigator.onLine ? 'Scanned. Next book.' : 'Scanned. Saved until you have signal.');
   handleIsbn(isbn, true);
   return true;
 }
@@ -478,7 +603,53 @@ window.addEventListener('load', () => { // load the reader early so the first sc
   d.detect(c).catch(() => {});
 });
 
-/* ---------- events ---------- */
+/* ---------- list: tap, tick, swipe ---------- */
+let swipe = null, swallowClick = false;
+const ul = $('history');
+ul.addEventListener('click', ev => {
+  if (swallowClick) return;
+  const li = ev.target.closest('li[data-id]'); if (!li) return;
+  const e = findEntry(li.dataset.id); if (!e) return;
+  if (ev.target.closest('.tick')){
+    e.bought = !e.bought; persist(); refreshIfCurrent(e); return;
+  }
+  current = e; renderResult();
+  $('result').scrollIntoView({ behavior:'smooth', block:'start' });
+});
+ul.addEventListener('pointerdown', ev => {
+  const li = ev.target.closest('li[data-id]'); if (!li || ev.button > 0) return;
+  swipe = { li, x:ev.clientX, y:ev.clientY, dx:0, active:false };
+});
+ul.addEventListener('pointermove', ev => {
+  if (!swipe) return;
+  const dx = ev.clientX - swipe.x, dy = ev.clientY - swipe.y;
+  if (!swipe.active){
+    if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.5){
+      swipe.active = true; swipe.li.style.transition = 'none';
+      try{ swipe.li.setPointerCapture(ev.pointerId); }catch(e){}
+    } else if (Math.abs(dy) > 12){ swipe = null; return; }
+  }
+  if (swipe.active){
+    swipe.dx = Math.min(0, dx);
+    swipe.li.style.transform = `translateX(${swipe.dx}px)`;
+    swipe.li.style.opacity = String(Math.max(0.2, 1 + swipe.dx / 300));
+  }
+});
+function endSwipe(){
+  if (!swipe) return;
+  const { li, dx, active } = swipe; swipe = null;
+  if (!active) return;
+  swallowClick = true; setTimeout(() => { swallowClick = false; }, 60);
+  li.style.transition = '';
+  if (dx < -90){
+    li.style.transform = 'translateX(-100%)'; li.style.opacity = '0';
+    setTimeout(() => removeEntry(li.dataset.id), 180);
+  } else { li.style.transform = ''; li.style.opacity = ''; }
+}
+ul.addEventListener('pointerup', endSwipe);
+ul.addEventListener('pointercancel', endSwipe);
+
+/* ---------- other events ---------- */
 $('camBtn').onclick = toggleScan;
 $('manualForm').onsubmit = ev => {
   ev.preventDefault();
@@ -488,11 +659,8 @@ $('manualForm').onsubmit = ev => {
 };
 $('ebayPrice').oninput = () => { if (!current) return; current.ebay = num($('ebayPrice').value); renderVerdict(); persist(); };
 $('shopPrice').oninput = () => { if (!current) return; current.shop = num($('shopPrice').value); renderVerdict(); persist(); };
-$('history').onclick = ev => {
-  const b = ev.target.closest('button[data-id]'); if (!b) return;
-  current = H.find(x => String(x.id) === b.dataset.id); renderResult();
-  $('result').scrollIntoView({ behavior:'smooth', block:'start' });
-};
+$('boughtBtn').onclick = () => { if (!current) return; current.bought = !current.bought; persist(); renderResult(); };
+$('removeBtn').onclick = () => { if (current) removeEntry(current.id); };
 $('clearBtn').onclick = () => {
   if (!H.length || !confirm('Clear all scanned books from this list?')) return;
   H = []; current = null; seen.clear(); $('result').hidden = true; persist();
@@ -500,7 +668,9 @@ $('clearBtn').onclick = () => {
 $('copyBtn').onclick = async () => {
   if (!H.length) return;
   const lines = H.map(e => { const c = calc(e);
-    return [e.title || 'Unknown title', e.isbn, 'Shop ' + gbp(e.shop ?? 0), e.ebay != null ? 'eBay ' + gbp(e.ebay) : 'eBay ?', c ? 'Profit ' + gbp(c.profit) + ' ' + WORD[c.verdict] : ''].join(' | ');
+    return [e.bought ? 'BOUGHT' : '', e.title || 'Unknown title', e.isbn, 'Shop ' + gbp(e.shop ?? 0),
+      e.ebay != null ? 'eBay ' + gbp(e.ebay) : 'eBay ?', e.sales != null ? e.sales + ' sold' : '',
+      c ? 'Profit ' + gbp(c.profit) + ' ' + WORD[c.verdict] : ''].filter(Boolean).join(' | ');
   });
   try{ await navigator.clipboard.writeText(lines.join('\n')); $('copyBtn').textContent = 'Copied'; }
   catch(e){ $('copyBtn').textContent = 'Copy failed'; }
@@ -521,7 +691,8 @@ $('batchSave').onclick = ev => {
 /* settings */
 function openSettings(){
   $('sFeePct').value = S.feePct; $('sFeeFixed').value = S.feeFixed.toFixed(2);
-  $('sPostage').value = S.postage.toFixed(2); $('sMin').value = S.minProfit.toFixed(2); $('sServer').value = S.server;
+  $('sPostage').value = S.postage.toFixed(2); $('sMin').value = S.minProfit.toFixed(2);
+  $('sMinSales').value = S.minSales; $('sServer').value = S.server;
   $('settingsDlg').showModal();
 }
 $('settingsBtn').onclick = openSettings;
@@ -532,12 +703,14 @@ $('settingsSave').onclick = () => {
   S.feeFixed = num($('sFeeFixed').value) ?? DEFAULTS.feeFixed;
   S.postage = num($('sPostage').value) ?? DEFAULTS.postage;
   S.minProfit = num($('sMin').value) ?? DEFAULTS.minProfit;
+  const ms = num($('sMinSales').value); S.minSales = ms != null && ms >= 0 ? Math.round(ms) : DEFAULTS.minSales;
   S.server = $('sServer').value.trim();
   save('bs_settings', S); renderVerdict(); renderHistory(); renderBanner();
 };
 
-H.forEach(e => { if (e.pending){ e.pending = false; e.source = e.source || 'Lookup was interrupted. Scan it again.'; } });
-renderBatch(); renderBanner(); renderHistory();
+/* start-up: anything left mid-lookup gets checked again */
+H.forEach(e => { delete e.busy; if (e.pending){ e.pending = false; e.queued = true; } });
+renderBatch(); renderBanner(); persist(); retryQueued();
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 </script>
 </body>
