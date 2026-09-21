@@ -13,13 +13,13 @@
 :root{
   --paper:#EEF1F4; --card:#FFFFFF; --ink:#16223A; --muted:#5B6780; --line:#D3D9E2;
   --sticker:#FFCF33; --sticker-ink:#16223A;
-  --buy:#13824F; --maybe:#A86A12; --skip:#C23B2E;
+  --buy:#E0102F; --maybe:#A86A12; --skip:#6B7489;
   box-sizing:border-box;
   padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
 }
 @media (prefers-color-scheme:dark){:root{
   --paper:#10151F; --card:#182030; --ink:#E8ECF3; --muted:#97A2B8; --line:#2A3448;
-  --buy:#3CC483; --maybe:#E0A33A; --skip:#EF6A5C;
+  --buy:#FF3347; --maybe:#E0A33A; --skip:#7D879C;
 }}
 *,*::before,*::after{box-sizing:inherit}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
@@ -78,7 +78,7 @@ button{cursor:pointer}
 .verdict.buy{background:var(--buy)} .verdict.maybe{background:var(--maybe)} .verdict.skip{background:var(--skip)}
 .verdict .word{font-size:2.4rem;font-weight:800;font-stretch:65%;line-height:1}
 .verdict .profit{font-size:1.15rem;font-weight:700;text-align:right}
-@media (prefers-color-scheme:dark){.verdict.buy,.verdict.maybe,.verdict.skip{color:#0E131C}}
+@media (prefers-color-scheme:dark){.verdict.maybe{color:#0E131C}}
 
 .links{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
 .links a{display:block;text-align:center;text-decoration:none;border:1px solid var(--line);border-radius:10px;padding:11px 8px;font-weight:600;color:var(--ink)}
@@ -86,6 +86,8 @@ button{cursor:pointer}
 
 .list-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:26px}
 .list-head h2{margin:0;font-size:1.1rem}
+.deal-note{all:unset;cursor:pointer;display:block;margin-top:4px;font-size:.85rem;color:var(--muted);text-decoration:underline;text-underline-offset:2px}
+.deal-note:focus-visible{outline:3px solid var(--sticker)}
 .list-head div{display:flex;gap:8px}
 #history{list-style:none;margin:10px 0 0;padding:0}
 #history li{border-bottom:1px solid var(--line)}
@@ -94,6 +96,9 @@ button{cursor:pointer}
 #history .t{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #history .s{font-size:.85rem;color:var(--muted)}
 #history .v{font-weight:800;font-stretch:70%;font-size:1.1rem;flex:none}
+#history li.deal{background:var(--buy);border-radius:10px;border-bottom:0;margin-bottom:6px}
+#history li.deal button{padding:12px}
+#history li.deal .t,#history li.deal .s,#history li.deal .v{color:#fff}
 #history .v.buy{color:var(--buy)} #history .v.maybe{color:var(--maybe)} #history .v.skip{color:var(--skip)}
 .empty{color:var(--muted);font-size:.92rem;padding:10px 0}
 
@@ -108,6 +113,10 @@ dialog p{margin:0 0 14px;color:var(--muted);font-size:.9rem}
 .dialog-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:6px}
 .dialog-actions .btn{width:auto}
 [hidden]{display:none!important}
+.banner{margin-top:14px;border:2px dashed var(--buy);border-radius:14px;padding:12px 14px;font-size:.92rem}
+.banner button{all:unset;cursor:pointer;font-weight:700;text-decoration:underline;text-underline-offset:2px}
+.msg.ok{color:var(--ink);font-weight:600}
+#history .v.wait{color:var(--muted);font-weight:600;font-size:.85rem}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -123,6 +132,7 @@ dialog p{margin:0 0 14px;color:var(--muted);font-size:.9rem}
 </header>
 
 <main>
+  <div id="setupBanner" class="banner" hidden>Automatic eBay sold prices are off, so each book needs a price typed in. <button id="bannerBtn" type="button">Add your price server</button></div>
   <section class="panel">
     <div id="reader" hidden>
       <video id="video" playsinline muted autoplay></video>
@@ -169,7 +179,10 @@ dialog p{margin:0 0 14px;color:var(--muted);font-size:.9rem}
   </section>
 
   <div class="list-head">
-    <h2>Scanned books</h2>
+    <span>
+      <h2>Scanned books</h2>
+      <button id="dealNote" class="deal-note" type="button"></button>
+    </span>
     <div>
       <button id="copyBtn" class="btn quiet">Copy list</button>
       <button id="clearBtn" class="btn quiet">Clear</button>
@@ -200,8 +213,534 @@ dialog p{margin:0 0 14px;color:var(--muted);font-size:.9rem}
     <label class="field">eBay fee (% of sale incl. postage)<input id="sFeePct" inputmode="decimal"></label>
     <label class="field">eBay fee per order (£)<input id="sFeeFixed" inputmode="decimal"></label>
     <label class="field">Your postage cost per book (£)<input id="sPostage" inputmode="decimal"></label>
-    <label class="field">Profit needed to say "Buy" (£)<input id="sMin" inputmode="decimal"></label>
-    <label class="field">Price server (optional, fills in eBay prices automatically)<input id="sServer" inputmode="url" placeholder="https://book-scout.yourname.workers.dev"></label>
+    <label class="field">Profit that makes a book a good deal (£)<input id="sMin" inputmode="decimal"></label>
+    <label class="field">Price server (fills in eBay sold prices automatically)<input id="sServer" inputmode="url" placeholder="https://book-scout.yourname.workers.dev"></label>
+    <div class="dialog-actions">
+      <button class="btn quiet" value="cancel">Cancel</button>
+      <button class="btn primary" value="ok" id="settingsSave">Save settings</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+const $ = id => document.getElementById(id);
+const DEFAULTS = { batch:1, feePct:12.8, feeFixed:0.30, postage:3.00, minProfit:3, server:'' };
+function load(k,d){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):d; }catch(e){ return d; } }
+function save(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
+let S = Object.assign({}, DEFAULTS, load('bs_settings', {}));
+let H = load('bs_history', []);
+let CACHE = load('bs_cache', {});   // eBay results per ISBN, kept for 3 days
+let current = null;
+
+const gbp = n => (n < 0 ? '−£' : '£') + Math.abs(n).toFixed(2);
+const num = v => { const n = parseFloat(String(v ?? '').replace(/[£,\s]/g,'')); return isFinite(n) ? n : null; };
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------- ISBN ---------- */
+function check13(d){ let s=0; for(let i=0;i<12;i++) s += +d[i]*(i%2?3:1); return String((10 - s%10) % 10); }
+function toIsbn13(code){
+  code = String(code).replace(/[^0-9Xx]/g,'');
+  if (code.length === 10){ const core = '978' + code.slice(0,9); return core + check13(core); }
+  if (code.length === 13 && /^97[89]/.test(code) && check13(code) === code[12]) return code;
+  return null;
+}
+
+/* ---------- lookups ---------- */
+async function lookupBook(isbn){
+  try{
+    const r = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`);
+    const b = (await r.json())[`ISBN:${isbn}`];
+    if (b) return { title:b.title, author:(b.authors||[]).map(a=>a.name).join(', '), cover:(b.cover&&(b.cover.medium||b.cover.small))||'' };
+  }catch(e){}
+  try{
+    const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
+    const v = (await r.json()).items?.[0]?.volumeInfo;
+    if (v) return { title:v.title, author:(v.authors||[]).join(', '), cover:(v.imageLinks?.thumbnail||'').replace('http:','https:') };
+  }catch(e){}
+  return null;
+}
+async function lookupEbay(isbn){
+  if (!S.server) return null;
+  const hit = CACHE[isbn];
+  if (hit && Date.now() - hit.at < 3*864e5) return hit.data;
+  try{
+    const r = await fetch(S.server.replace(/\/+$/,'') + '/?isbn=' + isbn);
+    const j = await r.json();
+    if (!r.ok) return { error:true, detail:j.error };
+    CACHE[isbn] = { at:Date.now(), data:j };
+    const keys = Object.keys(CACHE); if (keys.length > 500) delete CACHE[keys[0]];
+    save('bs_cache', CACHE);
+    return j;
+  }catch(e){ return { error:true }; }
+}
+
+/* ---------- maths ---------- */
+function calc(e){
+  if (e.ebay == null || e.shop == null) return null;
+  const fees = e.ebay * S.feePct/100 + S.feeFixed;
+  const profit = e.ebay - fees - S.postage - e.shop;
+  const verdict = profit >= S.minProfit ? 'buy' : profit > 0 ? 'maybe' : 'skip';
+  return { fees, profit, verdict };
+}
+const WORD = { buy:'Buy', maybe:'Maybe', skip:'Skip' };
+
+/* ---------- rendering ---------- */
+function renderBatch(){ $('batchVal').textContent = gbp(S.batch); }
+function renderBanner(){ $('setupBanner').hidden = !!S.server; }
+
+function renderResult(){
+  const e = current; if (!e) return;
+  $('result').hidden = false;
+  $('title').textContent = e.title || (e.pending ? 'Looking up…' : 'Title not found');
+  $('author').textContent = e.author || '';
+  $('isbnText').textContent = 'ISBN ' + e.isbn;
+  $('cover').src = e.cover || '';
+  if (document.activeElement !== $('ebayPrice')) $('ebayPrice').value = e.ebay != null ? e.ebay.toFixed(2) : '';
+  if (document.activeElement !== $('shopPrice')) $('shopPrice').value = e.shop != null ? e.shop.toFixed(2) : '';
+  $('priceSource').textContent = e.pending ? 'Checking eBay sold prices…' : (e.source || '');
+  $('soldLink').href = `https://www.ebay.co.uk/sch/i.html?_nkw=${e.isbn}&LH_Sold=1&LH_Complete=1`;
+  $('liveLink').href = `https://www.ebay.co.uk/sch/i.html?_nkw=${e.isbn}`;
+  renderVerdict();
+}
+function renderVerdict(){
+  if (!current) return;
+  const c = calc(current), v = $('verdict');
+  v.className = 'verdict' + (c ? ' ' + c.verdict : '');
+  if (!c){
+    $('verdictWord').textContent = '…';
+    $('profit').textContent = current.pending ? 'Checking eBay' : 'No eBay price';
+    $('breakdown').textContent = '';
+    return;
+  }
+  $('verdictWord').textContent = WORD[c.verdict];
+  $('profit').textContent = gbp(c.profit) + ' profit';
+  $('breakdown').textContent = `${gbp(current.ebay)} sale − ${gbp(c.fees)} eBay fees − ${gbp(S.postage)} postage − ${gbp(current.shop)} shop price`;
+}
+function rowSub(e){
+  if (e.pending) return `Shop ${gbp(e.shop)}, checking eBay…`;
+  if (e.ebay == null) return `Shop ${gbp(e.shop)}, no eBay sales found`;
+  const n = e.sales != null ? `, ${e.sales}${e.more ? '+' : ''} sold` : '';
+  return `Shop ${gbp(e.shop)}, eBay ${gbp(e.ebay)}${n}`;
+}
+function renderHistory(){
+  $('dealNote').textContent = `Good deals (${gbp(S.minProfit)}+ profit) show in red at the top. Change`;
+  const ul = $('history');
+  if (!H.length){ ul.innerHTML = '<li class="empty">Books you scan will appear here.</li>'; return; }
+  const withCalc = H.map(e => ({ e, c:calc(e) }));
+  const deals = withCalc.filter(x => x.c && x.c.verdict === 'buy').sort((a,b) => b.c.profit - a.c.profit);
+  const rest = withCalc.filter(x => !(x.c && x.c.verdict === 'buy'));
+  ul.innerHTML = deals.concat(rest).map(({ e, c }) =>
+    `<li class="${c && c.verdict === 'buy' ? 'deal' : ''}"><button data-id="${e.id}"><span style="min-width:0"><div class="t">${esc(e.title || e.isbn)}</div><div class="s">${rowSub(e)}</div></span>`
+    + (c ? `<span class="v ${c.verdict}">${gbp(c.profit)}</span>` : `<span class="v wait">${e.pending ? '…' : '–'}</span>`) + `</button></li>`
+  ).join('');
+}
+function persist(){ if (H.length > 300) H.length = 300; save('bs_history', H); renderHistory(); }
+
+/* ---------- sounds ---------- */
+let audio = null;
+function beep(freqs){
+  try{
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === 'suspended') audio.resume();
+    freqs.forEach((f, i) => {
+      const o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime + i*0.13;
+      o.frequency.value = f; o.connect(g); g.connect(audio.destination);
+      g.gain.setValueAtTime(0.18, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.11);
+      o.start(t); o.stop(t + 0.12);
+    });
+  }catch(e){}
+}
+
+/* ---------- a scan ---------- */
+async function handleIsbn(isbn, fromScanner){
+  const id = Date.now() + Math.random();
+  const entry = { id, isbn, title:'', author:'', cover:'', shop:S.batch, ebay:null, source:'', pending:true };
+  H.unshift(entry); current = entry; persist(); renderResult();
+  if (!fromScanner) $('result').scrollIntoView({ behavior:'smooth', block:'start' });
+
+  const [book, eb] = await Promise.all([ lookupBook(isbn), lookupEbay(isbn) ]);
+  const e = H.find(x => x.id === id); if (!e) return;
+  e.pending = false;
+  e.title = book?.title || eb?.title || ''; e.author = book?.author || ''; e.cover = book?.cover || eb?.image || '';
+  if (eb && !eb.error && eb.count > 0){
+    if (e.ebay == null) e.ebay = eb.median;
+    e.sales = eb.source === 'sold' ? eb.count : null; e.more = !!eb.more;
+    e.source = eb.source === 'sold'
+      ? `Middle sold price of ${eb.count}${eb.more ? '+' : ''} eBay UK sales in the last 90 days, including postage (range ${gbp(eb.lowest)} to ${gbp(eb.highest)}).`
+      : `Middle price of ${eb.count} live eBay listings, including postage. These are asking prices, not sold prices.`;
+  } else if (eb && !eb.error){
+    e.source = 'No eBay UK sales found for this ISBN in the last 90 days.';
+  } else if (eb && eb.error){
+    e.source = 'Couldn’t reach your price server' + (eb.detail ? ` (${eb.detail})` : '') + '. Type a price in or check sold prices.';
+  } else {
+    e.source = 'Automatic prices are off. Add your price server in settings, or type a price in.';
+  }
+  persist();
+  if (current && current.id === id) renderResult();
+  const c = calc(e);
+  if (c && c.verdict === 'buy'){ beep([880, 1320, 1760]); if (navigator.vibrate) navigator.vibrate([80,60,80,60,200]); flash(`Good deal: ${e.title || isbn} (${gbp(c.profit)} profit)`); }
+}
+
+/* ---------- scanner (continuous, rapid fire) ---------- */
+let detector = null, stream = null, track = null, busy = false, coolUntil = 0;
+let lastWarn = 0, torchOn = false;
+const seen = new Map(); // isbn -> time scanned, so the same book isn't added twice
+function msg(t, ok){ $('msg').textContent = t; $('msg').className = 'msg' + (ok ? ' ok' : ''); }
+let flashTimer = 0;
+function flash(t){ msg(t, true); clearTimeout(flashTimer); flashTimer = setTimeout(() => msg(''), 3500); }
+function setCam(state){
+  const b = $('camBtn');
+  if (state === 'loading'){ b.textContent = 'Starting camera…'; b.disabled = true; }
+  else if (state === 'scanning'){ b.textContent = 'Stop scanning'; b.disabled = false; }
+  else { b.textContent = 'Start scanning'; b.disabled = false; }
+}
+function getDetector(){
+  if (detector) return detector;
+  if (!('BarcodeDetector' in window)) return null;
+  detector = new BarcodeDetector({ formats:['ean_13'] });
+  return detector;
+}
+async function toggleScan(){
+  if (stream){ stopScan(); return; }
+  msg('');
+  if (!getDetector()){ msg('The scanner didn’t load. Check your internet connection and reload, or type the ISBN instead.'); return; }
+  beep([]); // unlocks sound on iPhone
+  setCam('loading');
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({ audio:false, video:{
+      facingMode:{ ideal:'environment' }, width:{ ideal:1920 }, height:{ ideal:1080 } } });
+  }catch(e){
+    setCam('idle');
+    msg('Camera access is blocked. Allow the camera for this site in your browser settings, or type the ISBN instead.');
+    return;
+  }
+  track = stream.getVideoTracks()[0];
+  try{ await track.applyConstraints({ advanced:[{ focusMode:'continuous' }] }); }catch(e){}
+  const caps = track.getCapabilities ? track.getCapabilities() : {};
+  $('torchBtn').hidden = !caps.torch;
+  const v = $('video'); v.srcObject = stream;
+  $('reader').hidden = false; $('scanRow').style.marginTop = '12px';
+  try{ await v.play(); }catch(e){}
+  setCam('scanning');
+  loop();
+}
+function stopScan(){
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null; track = null; torchOn = false;
+  $('reader').hidden = true; $('scanRow').style.marginTop = ''; setCam('idle');
+}
+async function loop(){
+  if (!stream) return;
+  const v = $('video');
+  if (!busy && Date.now() > coolUntil && v.readyState >= 2){
+    busy = true;
+    try{
+      const codes = await detector.detect(v);
+      for (const c of codes){ if (onCode(c.rawValue)) break; }
+    }catch(e){}
+    busy = false;
+  }
+  setTimeout(loop, 50);
+}
+function onCode(text){
+  const isbn = toIsbn13(text);
+  if (!isbn){
+    if (Date.now() - lastWarn > 2500){ lastWarn = Date.now(); msg('That isn’t a book ISBN. Use the barcode starting 978 or 979.'); }
+    return false;
+  }
+  const t = seen.get(isbn);
+  if (t && Date.now() - t < 10*60*1000){ // already scanned in the last 10 minutes
+    if (Date.now() - lastWarn > 2500){ lastWarn = Date.now(); msg('Already scanned. Move on to the next book.'); }
+    return false;
+  }
+  seen.set(isbn, Date.now());
+  coolUntil = Date.now() + 900; // short gap so you can swap books
+  $('reader').classList.add('hit'); setTimeout(() => $('reader').classList.remove('hit'), 400);
+  beep([1200]); if (navigator.vibrate) navigator.vibrate(40);
+  flash('Scanned. Next book.');
+  handleIsbn(isbn, true);
+  return true;
+}
+$('torchBtn').onclick = async () => {
+  if (!track) return;
+  torchOn = !torchOn;
+  try{ await track.applyConstraints({ advanced:[{ torch:torchOn }] }); }catch(e){ torchOn = false; }
+  $('torchBtn').setAttribute('aria-pressed', String(torchOn));
+};
+document.addEventListener('visibilitychange', () => { if (document.hidden) stopScan(); });
+window.addEventListener('load', () => { // load the reader early so the first scan is instant
+  const d = getDetector(); if (!d) return;
+  const c = document.createElement('canvas'); c.width = c.height = 8;
+  d.detect(c).catch(() => {});
+});
+
+/* ---------- events ---------- */
+$('camBtn').onclick = toggleScan;
+$('manualForm').onsubmit = ev => {
+  ev.preventDefault();
+  const isbn = toIsbn13($('manualIsbn').value);
+  if (!isbn){ msg('That ISBN doesn’t look right. Type the 10 or 13 digits under the barcode.'); return; }
+  $('manualIsbn').value = ''; msg(''); handleIsbn(isbn, false);
+};
+$('ebayPrice').oninput = () => { if (!current) return; current.ebay = num($('ebayPrice').value); renderVerdict(); persist(); };
+$('shopPrice').oninput = () => { if (!current) return; current.shop = num($('shopPrice').value); renderVerdict(); persist(); };
+$('history').onclick = ev => {
+  const b = ev.target.closest('button[data-id]'); if (!b) return;
+  current = H.find(x => String(x.id) === b.dataset.id); renderResult();
+  $('result').scrollIntoView({ behavior:'smooth', block:'start' });
+};
+$('clearBtn').onclick = () => {
+  if (!H.length || !confirm('Clear all scanned books from this list?')) return;
+  H = []; current = null; seen.clear(); $('result').hidden = true; persist();
+};
+$('copyBtn').onclick = async () => {
+  if (!H.length) return;
+  const lines = H.map(e => { const c = calc(e);
+    return [e.title || 'Unknown title', e.isbn, 'Shop ' + gbp(e.shop ?? 0), e.ebay != null ? 'eBay ' + gbp(e.ebay) : 'eBay ?', c ? 'Profit ' + gbp(c.profit) + ' ' + WORD[c.verdict] : ''].join(' | ');
+  });
+  try{ await navigator.clipboard.writeText(lines.join('\n')); $('copyBtn').textContent = 'Copied'; }
+  catch(e){ $('copyBtn').textContent = 'Copy failed'; }
+  setTimeout(() => $('copyBtn').textContent = 'Copy list', 1800);
+};
+
+/* batch price */
+const CHIPS = [0.5, 1, 1.5, 2, 3];
+$('chips').innerHTML = CHIPS.map(v => `<button type="button" data-v="${v}">${gbp(v)}</button>`).join('');
+$('chips').onclick = ev => { const b = ev.target.closest('button'); if (b) $('batchInput').value = (+b.dataset.v).toFixed(2); };
+$('batchBtn').onclick = () => { $('batchInput').value = S.batch.toFixed(2); $('batchDlg').showModal(); };
+$('batchSave').onclick = ev => {
+  const v = num($('batchInput').value);
+  if (v == null || v < 0){ ev.preventDefault(); $('batchInput').focus(); return; }
+  S.batch = v; save('bs_settings', S); renderBatch();
+};
+
+/* settings */
+function openSettings(){
+  $('sFeePct').value = S.feePct; $('sFeeFixed').value = S.feeFixed.toFixed(2);
+  $('sPostage').value = S.postage.toFixed(2); $('sMin').value = S.minProfit.toFixed(2); $('sServer').value = S.server;
+  $('settingsDlg').showModal();
+}
+$('settingsBtn').onclick = openSettings;
+$('dealNote').onclick = openSettings;
+$('bannerBtn').onclick = () => { openSettings(); $('sServer').focus(); };
+$('settingsSave').onclick = () => {
+  S.feePct = num($('sFeePct').value) ?? DEFAULTS.feePct;
+  S.feeFixed = num($('sFeeFixed').value) ?? DEFAULTS.feeFixed;
+  S.postage = num($('sPostage').value) ?? DEFAULTS.postage;
+  S.minProfit = num($('sMin').value) ?? DEFAULTS.minProfit;
+  S.server = $('sServer').value.trim();
+  save('bs_settings', S); renderVerdict(); renderHistory(); renderBanner();
+};
+
+H.forEach(e => { if (e.pending){ e.pending = false; e.source = e.source || 'Lookup was interrupted. Scan it again.'; } });
+renderBatch(); renderBanner(); renderHistory();
+</script>
+<style>
+:root{
+  --paper:#EEF1F4; --card:#FFFFFF; --ink:#16223A; --muted:#5B6780; --line:#D3D9E2;
+  --sticker:#FFCF33; --sticker-ink:#16223A;
+  --buy:#E0102F; --maybe:#A86A12; --skip:#6B7489;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#10151F; --card:#182030; --ink:#E8ECF3; --muted:#97A2B8; --line:#2A3448;
+  --buy:#FF3347; --maybe:#E0A33A; --skip:#7D879C;
+}}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:"Archivo",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.45}
+main{max-width:560px;margin:0 auto;padding:0 16px 40px}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--sticker);outline-offset:2px}
+
+.top{max-width:560px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px}
+.top h1{margin:0;font-size:1.5rem;font-stretch:75%;font-weight:800;letter-spacing:-.01em}
+.top-actions{display:flex;align-items:center;gap:10px}
+.icon-btn{background:none;border:1px solid var(--line);border-radius:10px;width:44px;height:44px;display:grid;place-items:center}
+.icon-btn svg{width:22px;height:22px}
+
+/* the price sticker */
+.sticker{background:var(--sticker);color:var(--sticker-ink);border:0;border-radius:6px;
+  padding:6px 12px 7px;transform:rotate(-3deg);box-shadow:0 2px 0 rgba(0,0,0,.18);
+  display:flex;flex-direction:column;align-items:center;line-height:1.05}
+.sticker small{font-size:.7rem;font-weight:600}
+.sticker strong{font-size:1.35rem;font-stretch:70%;font-weight:800}
+
+.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:14px}
+#reader{position:relative;width:100%;border-radius:10px;overflow:hidden;background:#000;aspect-ratio:4/3}
+#reader video{display:block;width:100%;height:100%;object-fit:cover}
+#reader .guide{position:absolute;left:10%;right:10%;top:32%;bottom:32%;border:3px solid rgba(255,255,255,.9);border-radius:8px;box-shadow:0 0 0 999px rgba(0,0,0,.28);transition:border-color .15s}
+#reader.hit .guide{border-color:var(--sticker)}
+#torchBtn{position:absolute;right:10px;bottom:10px;border:0;border-radius:999px;padding:8px 14px;background:rgba(0,0,0,.6);color:#fff;font-weight:700;font-size:.9rem}
+#torchBtn[aria-pressed="true"]{background:var(--sticker);color:var(--sticker-ink)}
+.btn{border:0;border-radius:10px;padding:14px 16px;font-weight:700;font-size:1.05rem;width:100%}
+.btn.primary{background:var(--ink);color:var(--paper)}
+.btn.quiet{background:none;border:1px solid var(--line);font-weight:600;font-size:.95rem;padding:10px 14px;width:auto}
+.btn[disabled]{opacity:.55;cursor:default}
+.scan-row{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+.manual{display:flex;gap:8px}
+.manual input{flex:1;min-width:0;border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:10px 12px}
+.msg{margin:10px 0 0;color:var(--muted);font-size:.9rem;min-height:1.3em}
+
+.book{display:flex;gap:14px;align-items:flex-start}
+.book img{width:72px;height:auto;border-radius:4px;border:1px solid var(--line);flex:none;background:var(--paper)}
+.book img[src=""]{display:none}
+.book h2{margin:0 0 2px;font-size:1.2rem;line-height:1.2}
+.book p{margin:0;color:var(--muted);font-size:.92rem}
+
+.figures{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+.figures label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:var(--muted);font-weight:600}
+.money{display:flex;align-items:center;border:1px solid var(--line);border-radius:10px;background:var(--paper);padding:0 12px}
+.money span{color:var(--muted);font-weight:700}
+.money input{border:0;background:none;width:100%;padding:12px 6px;font-size:1.25rem;font-weight:700;color:var(--ink)}
+.money input:focus{outline:none}
+.money:focus-within{outline:3px solid var(--sticker);outline-offset:1px}
+.note{margin:8px 0 0;font-size:.85rem;color:var(--muted)}
+
+.verdict{margin-top:16px;border-radius:12px;padding:14px 16px;color:#fff;display:flex;justify-content:space-between;align-items:baseline;gap:12px;background:var(--muted)}
+.verdict.buy{background:var(--buy)} .verdict.maybe{background:var(--maybe)} .verdict.skip{background:var(--skip)}
+.verdict .word{font-size:2.4rem;font-weight:800;font-stretch:65%;line-height:1}
+.verdict .profit{font-size:1.15rem;font-weight:700;text-align:right}
+@media (prefers-color-scheme:dark){.verdict.maybe{color:#0E131C}}
+
+.links{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.links a{display:block;text-align:center;text-decoration:none;border:1px solid var(--line);border-radius:10px;padding:11px 8px;font-weight:600;color:var(--ink)}
+.links a.main{background:var(--sticker);color:var(--sticker-ink);border-color:var(--sticker)}
+
+.list-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:26px}
+.list-head h2{margin:0;font-size:1.1rem}
+.deal-note{all:unset;cursor:pointer;display:block;margin-top:4px;font-size:.85rem;color:var(--muted);text-decoration:underline;text-underline-offset:2px}
+.deal-note:focus-visible{outline:3px solid var(--sticker)}
+.list-head div{display:flex;gap:8px}
+#history{list-style:none;margin:10px 0 0;padding:0}
+#history li{border-bottom:1px solid var(--line)}
+#history button{all:unset;box-sizing:border-box;display:flex;justify-content:space-between;gap:12px;width:100%;padding:12px 2px;cursor:pointer}
+#history button:focus-visible{outline:3px solid var(--sticker)}
+#history .t{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#history .s{font-size:.85rem;color:var(--muted)}
+#history .v{font-weight:800;font-stretch:70%;font-size:1.1rem;flex:none}
+#history li.deal{background:var(--buy);border-radius:10px;border-bottom:0;margin-bottom:6px}
+#history li.deal button{padding:12px}
+#history li.deal .t,#history li.deal .s,#history li.deal .v{color:#fff}
+#history .v.buy{color:var(--buy)} #history .v.maybe{color:var(--maybe)} #history .v.skip{color:var(--skip)}
+.empty{color:var(--muted);font-size:.92rem;padding:10px 0}
+
+dialog{border:0;border-radius:16px;padding:20px;width:min(92vw,420px);background:var(--card);color:var(--ink)}
+dialog::backdrop{background:rgba(10,15,25,.55)}
+dialog h2{margin:0 0 6px;font-size:1.2rem}
+dialog p{margin:0 0 14px;color:var(--muted);font-size:.9rem}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px}
+.chips button{border:1px solid var(--line);background:var(--paper);border-radius:999px;padding:8px 14px;font-weight:700}
+.field{display:flex;flex-direction:column;gap:4px;margin-bottom:12px;font-size:.85rem;font-weight:600;color:var(--muted)}
+.field input{border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:10px 12px;font-size:1rem;color:var(--ink);font-weight:500}
+.dialog-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:6px}
+.dialog-actions .btn{width:auto}
+[hidden]{display:none!important}
+.banner{margin-top:14px;border:2px dashed var(--buy);border-radius:14px;padding:12px 14px;font-size:.92rem}
+.banner button{all:unset;cursor:pointer;font-weight:700;text-decoration:underline;text-underline-offset:2px}
+.msg.ok{color:var(--ink);font-weight:600}
+#history .v.wait{color:var(--muted);font-weight:600;font-size:.85rem}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Book Scout</h1>
+  <div class="top-actions">
+    <button id="batchBtn" class="sticker" aria-label="Change shop price"><small>Books at</small><strong id="batchVal">£1.00</strong></button>
+    <button id="settingsBtn" class="icon-btn" aria-label="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+  </div>
+</header>
+
+<main>
+  <div id="setupBanner" class="banner" hidden>Automatic eBay sold prices are off, so each book needs a price typed in. <button id="bannerBtn" type="button">Add your price server</button></div>
+  <section class="panel">
+    <div id="reader" hidden>
+      <video id="video" playsinline muted autoplay></video>
+      <div class="guide"></div>
+      <button id="torchBtn" type="button" aria-pressed="false" hidden>Light</button>
+    </div>
+    <div class="scan-row" id="scanRow">
+      <button id="camBtn" class="btn primary">Start scanning</button>
+      <form id="manualForm" class="manual">
+        <input id="manualIsbn" inputmode="numeric" autocomplete="off" placeholder="Or type the ISBN" aria-label="ISBN">
+        <button class="btn quiet" type="submit">Look up</button>
+      </form>
+    </div>
+    <p id="msg" class="msg" role="status"></p>
+  </section>
+
+  <section id="result" class="panel" hidden>
+    <div class="book">
+      <img id="cover" src="" alt="">
+      <div>
+        <h2 id="title"></h2>
+        <p id="author"></p>
+        <p id="isbnText"></p>
+      </div>
+    </div>
+    <div class="figures">
+      <label>eBay price
+        <span class="money"><span>£</span><input id="ebayPrice" inputmode="decimal" placeholder="0.00"></span>
+      </label>
+      <label>Shop price
+        <span class="money"><span>£</span><input id="shopPrice" inputmode="decimal"></span>
+      </label>
+    </div>
+    <p id="priceSource" class="note"></p>
+    <div id="verdict" class="verdict">
+      <span class="word" id="verdictWord">…</span>
+      <span class="profit" id="profit">Enter the eBay price</span>
+    </div>
+    <p id="breakdown" class="note"></p>
+    <div class="links">
+      <a id="soldLink" class="main" target="_blank" rel="noopener">Check sold prices</a>
+      <a id="liveLink" target="_blank" rel="noopener">See live listings</a>
+    </div>
+  </section>
+
+  <div class="list-head">
+    <span>
+      <h2>Scanned books</h2>
+      <button id="dealNote" class="deal-note" type="button"></button>
+    </span>
+    <div>
+      <button id="copyBtn" class="btn quiet">Copy list</button>
+      <button id="clearBtn" class="btn quiet">Clear</button>
+    </div>
+  </div>
+  <ul id="history"></ul>
+</main>
+
+<dialog id="batchDlg">
+  <form method="dialog">
+    <h2>What are the books priced at?</h2>
+    <p>Every book you scan uses this price until you change it. You can still change one book's price on its result.</p>
+    <div class="chips" id="chips"></div>
+    <label class="field">Price per book (£)
+      <input id="batchInput" inputmode="decimal">
+    </label>
+    <div class="dialog-actions">
+      <button class="btn quiet" value="cancel">Cancel</button>
+      <button class="btn primary" value="ok" id="batchSave">Set price</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="settingsDlg">
+  <form method="dialog">
+    <h2>Settings</h2>
+    <p>Used to work out profit. Check your current eBay fee in Seller Hub.</p>
+    <label class="field">eBay fee (% of sale incl. postage)<input id="sFeePct" inputmode="decimal"></label>
+    <label class="field">eBay fee per order (£)<input id="sFeeFixed" inputmode="decimal"></label>
+    <label class="field">Your postage cost per book (£)<input id="sPostage" inputmode="decimal"></label>
+    <label class="field">Profit that makes a book a good deal (£)<input id="sMin" inputmode="decimal"></label>
+    <label class="field">Price server (fills in eBay sold prices automatically)<input id="sServer" inputmode="url" placeholder="https://book-scout.yourname.workers.dev"></label>
     <div class="dialog-actions">
       <button class="btn quiet" value="cancel">Cancel</button>
       <button class="btn primary" value="ok" id="settingsSave">Save settings</button>
@@ -296,12 +835,15 @@ function renderVerdict(){
   $('breakdown').textContent = `${gbp(current.ebay)} sale − ${gbp(c.fees)} eBay fees − ${gbp(S.postage)} postage − ${gbp(current.shop)} shop price`;
 }
 function renderHistory(){
+  $('dealNote').textContent = `Good deals (${gbp(S.minProfit)}+ profit) show in red at the top. Change`;
   const ul = $('history');
   if (!H.length){ ul.innerHTML = '<li class="empty">Books you scan will appear here.</li>'; return; }
-  ul.innerHTML = H.map(e => {
-    const c = calc(e);
+  const withCalc = H.map(e => ({ e, c:calc(e) }));
+  const deals = withCalc.filter(x => x.c && x.c.verdict === 'buy').sort((a,b) => b.c.profit - a.c.profit);
+  const rest = withCalc.filter(x => !(x.c && x.c.verdict === 'buy'));
+  ul.innerHTML = deals.concat(rest).map(({ e, c }) => {
     const sub = e.ebay != null ? `Shop ${gbp(e.shop)}, eBay ${gbp(e.ebay)}` : `Shop ${gbp(e.shop)}, no eBay price yet`;
-    return `<li><button data-id="${e.id}"><span style="min-width:0"><div class="t">${esc(e.title || e.isbn)}</div><div class="s">${sub}</div></span>`
+    return `<li class="${c && c.verdict === 'buy' ? 'deal' : ''}"><button data-id="${e.id}"><span style="min-width:0"><div class="t">${esc(e.title || e.isbn)}</div><div class="s">${sub}</div></span>`
       + (c ? `<span class="v ${c.verdict}">${gbp(c.profit)}</span>` : `<span class="v">–</span>`) + `</button></li>`;
   }).join('');
 }
@@ -463,6 +1005,7 @@ $('batchSave').onclick = ev => {
 };
 
 /* settings */
+$('dealNote').onclick = () => $('settingsBtn').onclick();
 $('settingsBtn').onclick = () => {
   $('sFeePct').value = S.feePct; $('sFeeFixed').value = S.feeFixed.toFixed(2);
   $('sPostage').value = S.postage.toFixed(2); $('sMin').value = S.minProfit.toFixed(2); $('sServer').value = S.server;
